@@ -1,152 +1,176 @@
-import socket
-import threading
 import tkinter as tk
-from tkinter import scrolledtext, StringVar, ttk, filedialog
+from tkinter import scrolledtext, filedialog
+import socket
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import os
-import platform
+from datetime import datetime
+import threading
+import winsound
 
-# Common ports, their names, and associated vulnerabilities
-PORT_VULNERABILITIES = {
-    21: ("FTP", "Vulnerable to unauthorized access and man-in-the-middle attacks."),
-    22: ("SSH", "Can be vulnerable to brute force attacks if weak passwords are used."),
-    23: ("Telnet", "Vulnerable to eavesdropping and man-in-the-middle attacks. Should be replaced with SSH."),
-    25: ("SMTP", "Vulnerable to spamming and email spoofing."),
-    53: ("DNS", "Vulnerable to DNS spoofing and amplification attacks."),
-    80: ("HTTP", "Vulnerable to Cross-Site Scripting (XSS) and SQL Injection."),
-    110: ("POP3", "Can be vulnerable to brute force attacks and unauthorized access."),
-    139: ("NetBIOS", "Can be used for network discovery and exploitation via SMB."),
-    143: ("IMAP", "Can be vulnerable to brute force attacks and unauthorized access."),
-    443: ("HTTPS", "Vulnerable to SSL/TLS vulnerabilities (e.g., Heartbleed)."),
-    445: ("SMB", "Vulnerable to ransomware attacks and exploits like EternalBlue."),
-    3306: ("MySQL", "Vulnerable to unauthorized access and SQL injection."),
-    3389: ("RDP", "Vulnerable to brute force attacks and unauthorized access."),
-    8080: ("HTTP-Proxy", "Vulnerable to Proxy Hijacking and Cross-Site Scripting (XSS).")
+COMMON_PORTS = {
+    21: "FTP", 22: "SSH", 23: "Telnet", 25: "SMTP", 53: "DNS",
+    80: "HTTP", 110: "POP3", 139: "NetBIOS", 143: "IMAP",
+    443: "HTTPS", 445: "SMB", 3306: "MySQL", 3389: "RDP"
 }
 
-# For playing a sound on scan completion
-def play_sound():
-    try:
-        if platform.system() == "Windows":
-            import winsound
-            winsound.MessageBeep(winsound.MB_ICONEXCLAMATION)
-        else:
-            os.system('printf "\\a"')  # Simple beep for macOS/Linux
-    except:
-        pass
+PORT_VULNERABILITIES = {
+    21: "Plaintext credentials, brute-force attacks",
+    22: "Brute-force, outdated encryption",
+    23: "Unencrypted text, easy sniffing",
+    25: "Open relay for spam",
+    53: "DNS cache poisoning",
+    80: "Man-in-the-middle, XSS, directory traversal",
+    110: "Plaintext login, MITM",
+    139: "NetBIOS info leaks",
+    143: "Plaintext login",
+    443: "SSL vulnerabilities if misconfigured",
+    445: "WannaCry, EternalBlue",
+    3306: "Unauthorized access, SQL injection",
+    3389: "Brute-force, BlueKeep"
+}
 
-COMMON_PORTS = list(PORT_VULNERABILITIES.keys())
-
-log_data = []
+scanning = False
+executor = None
 
 def scan_port(ip, port):
     try:
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-            s.settimeout(0.5)
+            s.settimeout(0.3)
             result = s.connect_ex((ip, port))
             if result == 0:
-                port_name, vulnerability = PORT_VULNERABILITIES.get(port, ("Unknown", "No known vulnerabilities"))
-                return port, port_name, vulnerability
+                name = COMMON_PORTS.get(port, "Unknown")
+                vuln = PORT_VULNERABILITIES.get(port, "General vulnerability")
+                return (port, name, vuln)
     except:
-        pass
+        return None
     return None
 
-def start_scan(ip, mode, log_callback):
+def play_sound():
+    winsound.Beep(800, 200)
+
+def log_message(message, tag=None):
+    log_output.insert(tk.END, message + "\n", tag)
+    log_output.see(tk.END)
+
+def start_scan(ip, mode):
+    global scanning, executor
+    if scanning:
+        return
+    scanning = True
+    status_label.config(text="🔍 Scanning...")
+    log_output.delete('1.0', tk.END)
+    scan_button.config(state="disabled")
+    cancel_button.config(state="normal")
+    save_button.config(state="disabled")
+    progress_bar["value"] = 0
+
     if mode == "full":
         ports = range(1, 65536)
     elif mode == "common":
-        ports = COMMON_PORTS
+        ports = COMMON_PORTS.keys()
     else:
         ports = range(1, 1025)
 
-    log_callback(f"\n[~] Scanning {ip} — Mode: {mode.capitalize()}", tag="info")
+    total_ports = len(ports)
+    progress_step = 100 / total_ports
 
-    open_ports = []
-    with ThreadPoolExecutor(max_workers=200) as executor:
+    def run():
+        nonlocal ports
+        open_ports = []
+        executor = ThreadPoolExecutor(max_workers=200)
         futures = [executor.submit(scan_port, ip, port) for port in ports]
+        completed = 0
         for future in as_completed(futures):
+            if not scanning:
+                break
             result = future.result()
             if result:
-                port, port_name, vulnerability = result
-                open_ports.append((port, port_name, vulnerability))
-                log_callback(f"[+] Open port: {port} ({port_name}) - Vulnerability: {vulnerability}", tag="success")
+                port, name, vuln = result
+                open_ports.append(result)
+                log_message(f"[+] Open port: {port} ({name}) - Vulnerability: {vuln}", "success")
+            completed += 1
+            progress_bar["value"] = progress_step * completed
 
-    if not open_ports:
-        log_callback(f"[!] No open ports found on {ip}.", tag="warning")
+        if not open_ports and scanning:
+            log_message("[!] No open ports found.", "warning")
+            status_label.config(text="⚠️ No open ports found.")
+        elif scanning:
+            status_label.config(text="✅ Scan complete!")
 
+        scan_button.config(state="normal")
+        cancel_button.config(state="disabled")
+        save_button.config(state="normal")
+        play_sound()
+        scanning = False
+
+    threading.Thread(target=run).start()
+
+def stop_scan():
+    global scanning
+    scanning = False
+    status_label.config(text="❌ Scan canceled.")
     scan_button.config(state="normal")
+    cancel_button.config(state="disabled")
     save_button.config(state="normal")
-    play_sound()
-
-def run_scan():
-    ip = ip_entry.get().strip()
-    mode = scan_mode.get()
-
-    if not ip:
-        log_output.insert(tk.END, "[!] Please enter a valid IP address.\n", "warning")
-        return
-
-    scan_button.config(state="disabled")
-    save_button.config(state="disabled")
-    log_output.delete(1.0, tk.END)
-    log_data.clear()
-
-    def log_callback(msg, tag=None):
-        log_data.append(msg)
-        log_output.insert(tk.END, msg + "\n", tag)
-        log_output.see(tk.END)
-
-    threading.Thread(target=start_scan, args=(ip, mode, log_callback)).start()
+    log_message("[X] Scan canceled by user.", "warning")
 
 def save_report():
-    try:
-        desktop_path = os.path.join(os.path.expanduser("~"), "Desktop")
-        file_path = os.path.join(desktop_path, "QuickScan_Report.txt")
-        with open(file_path, "w") as file:
-            file.write("\n".join(log_data))
-        log_output.insert(tk.END, f"\n[✔] Report saved to Desktop: QuickScan_Report.txt\n", "info")
-    except Exception as e:
-        log_output.insert(tk.END, f"\n[!] Failed to save report: {e}\n", "warning")
+    desktop = os.path.join(os.path.join(os.environ['USERPROFILE']), 'Desktop')
+    filename = f"QuickScan_Report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
+    filepath = os.path.join(desktop, filename)
+    with open(filepath, 'w') as f:
+        f.write(log_output.get('1.0', tk.END))
+    log_message(f"[✔] Report saved to Desktop as {filename}", "info")
+    play_sound()
 
-# GUI Setup
+# GUI setup
 app = tk.Tk()
 app.title("QuickScan by Klatu")
-app.geometry("780x530")
+app.geometry("850x650")
 app.configure(bg="#1e1e1e")
 
-style = ttk.Style()
-style.configure("TButton", font=("Consolas", 12), padding=6)
+# Terminal-style background animation
+bg_text = tk.Label(app, text="QUICKSCAN BY KLATU", font=("Consolas", 26, "bold"),
+                   fg="#00ffcc", bg="#1e1e1e")
+bg_text.pack(pady=10)
 
-title = tk.Label(app, text="QuickScan by Klatu", font=("Consolas", 22, "bold"), fg="#00ffe1", bg="#1e1e1e")
-title.pack(pady=15)
+entry_label = tk.Label(app, text="Target IP Address:", font=("Consolas", 12), bg="#1e1e1e", fg="white")
+entry_label.pack()
+ip_entry = tk.Entry(app, font=("Consolas", 14), width=30, bg="#111", fg="white", insertbackground='white')
+ip_entry.pack(pady=5)
 
-input_frame = tk.Frame(app, bg="#1e1e1e")
-input_frame.pack()
+# Mode toggle
+mode_var = tk.StringVar(value="common")
+tk.Radiobutton(app, text="Common Ports", variable=mode_var, value="common", bg="#1e1e1e", fg="white", selectcolor="#111").pack()
+tk.Radiobutton(app, text="Top 1024", variable=mode_var, value="top", bg="#1e1e1e", fg="white", selectcolor="#111").pack()
+tk.Radiobutton(app, text="Full Range (1-65535)", variable=mode_var, value="full", bg="#1e1e1e", fg="white", selectcolor="#111").pack()
 
-tk.Label(input_frame, text="Target IP:", font=("Consolas", 14), fg="#ffffff", bg="#1e1e1e").grid(row=0, column=0, padx=8)
-ip_entry = tk.Entry(input_frame, width=25, font=("Consolas", 14))
-ip_entry.grid(row=0, column=1)
+# Status label
+status_label = tk.Label(app, text="", font=("Consolas", 12), fg="#00b7ff", bg="#1e1e1e")
+status_label.pack(pady=5)
 
-scan_mode = StringVar(value="default")
-modes = [("Default", "default"), ("Common", "common"), ("Full", "full")]
-for i, (text, val) in enumerate(modes):
-    tk.Radiobutton(
-        input_frame, text=text, variable=scan_mode, value=val,
-        font=("Consolas", 12), bg="#1e1e1e", fg="white", selectcolor="#333"
-    ).grid(row=1, column=i, padx=10, pady=5)
-
-scan_button = ttk.Button(app, text="Start Scan", command=run_scan)
-scan_button.pack(pady=10)
-
-save_button = ttk.Button(app, text="Save Report to Desktop", command=save_report, state="disabled")
-save_button.pack(pady=5)
-
-log_output = scrolledtext.ScrolledText(app, font=("Consolas", 11), width=90, height=18, bg="#111", fg="#ffffff", insertbackground='white')
+# Log output area
+log_output = scrolledtext.ScrolledText(app, font=("Consolas", 11), width=100, height=18, bg="#111", fg="#ffffff", insertbackground='white')
+log_output.tag_config("success", foreground="#00ff00")
+log_output.tag_config("warning", foreground="#ffaa00")
+log_output.tag_config("info", foreground="#00b7ff")
 log_output.pack(padx=10, pady=10)
 
-# Log styles
-log_output.tag_config("success", foreground="#00ff88")
-log_output.tag_config("warning", foreground="#ffcc00")
-log_output.tag_config("info", foreground="#00b7ff")
+# Progress bar
+progress_bar = tk.ttk.Progressbar(app, length=600, mode="determinate")
+progress_bar.pack(pady=10)
+
+# Buttons
+button_frame = tk.Frame(app, bg="#1e1e1e")
+button_frame.pack()
+
+scan_button = tk.Button(button_frame, text="Start Scan", command=lambda: start_scan(ip_entry.get(), mode_var.get(), ), font=("Consolas", 12), bg="#00b7ff", fg="white", width=15)
+scan_button.grid(row=0, column=0, padx=10)
+
+cancel_button = tk.Button(button_frame, text="Cancel", command=stop_scan, font=("Consolas", 12), bg="#ff5555", fg="white", width=15, state="disabled")
+cancel_button.grid(row=0, column=1, padx=10)
+
+save_button = tk.Button(button_frame, text="Save Report", command=save_report, font=("Consolas", 12), bg="#66cc66", fg="white", width=15, state="disabled")
+save_button.grid(row=0, column=2, padx=10)
 
 app.mainloop()
