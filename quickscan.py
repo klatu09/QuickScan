@@ -163,12 +163,12 @@ def run_scan():
     scanning = True  # Set scanning flag to True
     scan_thread = threading.Thread(target=start_scan, args=(ip, mode, log_callback, progress_callback, time_callback))
     scan_thread.start()
-
+    
 def save_report():
     try:
         desktop_path = os.path.join(os.path.expanduser("~"), "Desktop")
         file_path = os.path.join(desktop_path, "QuickScan_Report.txt")
-        with open(file_path, "w") as file:
+        with open(file_path, "w", encoding="utf-8") as file:  # Use utf-8 encoding
             file.write("\n".join(log_data))
         log_callback(f"\n[✔] Report saved to Desktop: QuickScan_Report.txt", "info")
     except Exception as e:
@@ -178,11 +178,7 @@ def clear_log():
     log_output.delete(1.0, tk.END)
     log_data.clear()
 
-# Function to log messages to the log_output widget
-def log_callback(message, tag="info"):
-    log_output.insert(tk.END, message + "\n", tag)
-    log_output.see(tk.END)
-    log_data.append(message)
+
 
 # GUI Setup
 app = tk.Tk()
@@ -218,7 +214,7 @@ for i, (text, val) in enumerate(modes):
     ).grid(row=1, column=i, padx=10, pady=5)
 
 # Log output
-log_output = scrolledtext.ScrolledText(app, width=90, height=15, font=("Courier New", 12, "bold"), wrap=tk.WORD, bg="#2e2e2e", fg="white")
+log_output = scrolledtext.ScrolledText(app, width=90, height=15, font=("Courier New", 10, "bold"), wrap=tk.WORD, bg="#2e2e2e", fg="white")
 log_output.place(relx=0.5, rely=0.5, anchor="center")
 
 # Configure tags for colored logs
@@ -226,6 +222,12 @@ log_output.tag_config("info", foreground="lightblue")  # Info messages in light 
 log_output.tag_config("success", foreground="green")  # Success messages in green
 log_output.tag_config("warning", foreground="orange")  # Warning messages in orange
 log_output.tag_config("error", foreground="red")  # Error messages in red
+
+# Function to log messages to the log_output widget
+def log_callback(message, tag="info"):
+    log_output.insert(tk.END, message + "\n", tag)
+    log_output.see(tk.END)
+    log_data.append(message)
 
 # Buttons Frame (Horizontal alignment)
 button_frame = tk.Frame(app, bg="#1e1e1e")
