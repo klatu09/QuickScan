@@ -18,7 +18,7 @@
 
 ### Option 1: Run from Python
 1. Clone the repository:
-   - git clone https://github.com/yourusername/quickscan-by-klatu.git
+   - git clone [https://github.com/yourusername/quickscan-by-klatu.git]
    - cd quickscan-by-klatu
    
 2. Run the script
