@@ -6,6 +6,24 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 import os
 import platform
 
+# Common ports, their names, and associated vulnerabilities
+PORT_VULNERABILITIES = {
+    21: ("FTP", "Vulnerable to unauthorized access and man-in-the-middle attacks."),
+    22: ("SSH", "Can be vulnerable to brute force attacks if weak passwords are used."),
+    23: ("Telnet", "Vulnerable to eavesdropping and man-in-the-middle attacks. Should be replaced with SSH."),
+    25: ("SMTP", "Vulnerable to spamming and email spoofing."),
+    53: ("DNS", "Vulnerable to DNS spoofing and amplification attacks."),
+    80: ("HTTP", "Vulnerable to Cross-Site Scripting (XSS) and SQL Injection."),
+    110: ("POP3", "Can be vulnerable to brute force attacks and unauthorized access."),
+    139: ("NetBIOS", "Can be used for network discovery and exploitation via SMB."),
+    143: ("IMAP", "Can be vulnerable to brute force attacks and unauthorized access."),
+    443: ("HTTPS", "Vulnerable to SSL/TLS vulnerabilities (e.g., Heartbleed)."),
+    445: ("SMB", "Vulnerable to ransomware attacks and exploits like EternalBlue."),
+    3306: ("MySQL", "Vulnerable to unauthorized access and SQL injection."),
+    3389: ("RDP", "Vulnerable to brute force attacks and unauthorized access."),
+    8080: ("HTTP-Proxy", "Vulnerable to Proxy Hijacking and Cross-Site Scripting (XSS).")
+}
+
 # For playing a sound on scan completion
 def play_sound():
     try:
@@ -17,10 +35,7 @@ def play_sound():
     except:
         pass
 
-COMMON_PORTS = [
-    21, 22, 23, 25, 53, 80, 110, 139, 143,
-    443, 445, 3306, 3389, 8080
-]
+COMMON_PORTS = list(PORT_VULNERABILITIES.keys())
 
 log_data = []
 
@@ -30,7 +45,8 @@ def scan_port(ip, port):
             s.settimeout(0.5)
             result = s.connect_ex((ip, port))
             if result == 0:
-                return port
+                port_name, vulnerability = PORT_VULNERABILITIES.get(port, ("Unknown", "No known vulnerabilities"))
+                return port, port_name, vulnerability
     except:
         pass
     return None
@@ -49,10 +65,11 @@ def start_scan(ip, mode, log_callback):
     with ThreadPoolExecutor(max_workers=200) as executor:
         futures = [executor.submit(scan_port, ip, port) for port in ports]
         for future in as_completed(futures):
-            port = future.result()
-            if port:
-                open_ports.append(port)
-                log_callback(f"[+] Open port: {port}", tag="success")
+            result = future.result()
+            if result:
+                port, port_name, vulnerability = result
+                open_ports.append((port, port_name, vulnerability))
+                log_callback(f"[+] Open port: {port} ({port_name}) - Vulnerability: {vulnerability}", tag="success")
 
     if not open_ports:
         log_callback(f"[!] No open ports found on {ip}.", tag="warning")
