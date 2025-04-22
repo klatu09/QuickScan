@@ -8,7 +8,6 @@
 - 🛠️ Checks **ports 1–1024** (well-known/common ports) for every host
 - ⚡ High-speed scanning using multithreading
 - 💻 Lightweight and can be compiled into a standalone `.exe` or binary
-- 🧠 No user input required – runs automatically
 
 ## 🧰 Requirements
 
