@@ -1,4 +1,4 @@
-# 🔍 QuickScan by Klatu: Full Network & Port Scanner
+# 🔍 QuickScan
 
 **QuickScan** is a lightweight, Python-based tool developed by **Klatu** for scanning all devices on your local network and detecting open ports (1–1024) on each. It’s a fast and portable alternative to heavier scanners, perfect for quick diagnostics, auditing, or recon.
 
@@ -8,7 +8,6 @@
 - 🛠️ Checks **ports 1–1024** (well-known/common ports) for every host
 - ⚡ High-speed scanning using multithreading
 - 💻 Lightweight and can be compiled into a standalone `.exe` or binary
-- 🧠 No user input required – runs automatically
 
 ## 🧰 Requirements
 
